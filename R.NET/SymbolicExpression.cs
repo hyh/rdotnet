@@ -155,8 +155,12 @@ namespace RDotNet
             throw new ArgumentException();
          }
 
-         IntPtr installedName = this.GetFunction<Rf_install>()(attributeName);
-         IntPtr attribute = this.GetFunction<Rf_getAttrib>()(handle, installedName);
+         IntPtr installedName, attribute;
+         lock (Engine.syncLock)
+         {
+             installedName = this.GetFunction<Rf_install>()(attributeName);
+             attribute = this.GetFunction<Rf_getAttrib>()(handle, installedName);
+         }
          if (Engine.EqualsRNilValue(attribute))
          {
             return null;
@@ -175,7 +179,9 @@ namespace RDotNet
             throw new ArgumentException();
          }
 
-         IntPtr attribute = this.GetFunction<Rf_getAttrib>()(handle, symbol.handle);
+         IntPtr attribute;
+         lock (Engine.syncLock)
+            attribute = this.GetFunction<Rf_getAttrib>()(handle, symbol.handle);
          if (Engine.EqualsRNilValue(attribute))
          {
             return null;
@@ -204,8 +210,11 @@ namespace RDotNet
             value = Engine.NilValue;
          }
 
-         IntPtr installedName = this.GetFunction<Rf_install>()(attributeName);
-         this.GetFunction<Rf_setAttrib>()(handle, installedName, value.handle);
+         lock (Engine.syncLock)
+         {
+             IntPtr installedName = this.GetFunction<Rf_install>()(attributeName);
+             this.GetFunction<Rf_setAttrib>()(handle, installedName, value.handle);
+         }
       }
 
       internal void SetAttribute(SymbolicExpression symbol, SymbolicExpression value)
@@ -224,7 +233,8 @@ namespace RDotNet
             value = Engine.NilValue;
          }
 
-         this.GetFunction<Rf_setAttrib>()(handle, symbol.handle, value.handle);
+         lock (Engine.syncLock)
+            this.GetFunction<Rf_setAttrib>()(handle, symbol.handle, value.handle);
       }
 
       /// <summary>
@@ -233,16 +243,14 @@ namespace RDotNet
       /// <seealso cref="Unpreserve"/>
       public void Preserve()
       {
-         if (!IsInvalid && !isProtected)
-         {
-            if (Engine.EnableLock)
-            {
-               lock (lockObject) { this.GetFunction<R_PreserveObject>()(handle); }
-            }
-            else
-               this.GetFunction<R_PreserveObject>()(handle);
-            this.isProtected = true;
-         }
+          lock (Engine.syncLock)
+          {
+             if (!IsInvalid && !isProtected)
+             {
+                this.isProtected = true;
+                this.GetFunction<R_PreserveObject>()(handle);
+             }
+          }
       }
 
       /// <summary>
@@ -251,15 +259,13 @@ namespace RDotNet
       /// <seealso cref="Preserve"/>
       public void Unpreserve()
       {
-         if (!IsInvalid && IsProtected)
+         lock (Engine.syncLock)
          {
-            if (Engine.EnableLock)
-            {
-               lock (lockObject) { this.GetFunction<R_ReleaseObject>()(handle); ; }
-            }
-            else
-               this.GetFunction<R_ReleaseObject>()(handle);
-            this.isProtected = false;
+             if (!IsInvalid && IsProtected)
+             {
+                 this.isProtected = false;
+                 this.GetFunction<R_ReleaseObject>()(handle);
+             }
          }
       }
 

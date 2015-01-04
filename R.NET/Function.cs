@@ -77,7 +77,8 @@ namespace RDotNet
          //IntPtr result = Engine.GetFunction<Rf_applyClosure>()(Body.DangerousGetHandle(), handle,
          //                                                      argPairList.DangerousGetHandle(),
          //                                                      Environment.DangerousGetHandle(), newEnvironment);
-         return createCallAndEvaluate(argPairList.DangerousGetHandle());
+         lock (Engine.syncLock)
+             return createCallAndEvaluate(argPairList.DangerousGetHandle());
       }
 
       // http://msdn.microsoft.com/en-us/magazine/dd419661.aspx
@@ -108,21 +109,23 @@ namespace RDotNet
       protected SymbolicExpression InvokeOrderedArguments(SymbolicExpression[] args)
       {
          IntPtr argument = Engine.NilValue.DangerousGetHandle();
-         foreach (SymbolicExpression arg in args.Reverse())
+         lock (Engine.syncLock)
          {
-            argument = this.GetFunction<Rf_cons>()(arg.DangerousGetHandle(), argument);
+             foreach (SymbolicExpression arg in args.Reverse())
+             {
+                 argument = this.GetFunction<Rf_cons>()(arg.DangerousGetHandle(), argument);
+             }
+             return createCallAndEvaluate(argument);
          }
-         return createCallAndEvaluate(argument);
       }
 
       private SymbolicExpression createCallAndEvaluate(IntPtr argument)
       {
-          using (var call = new ProtectedPointer(Engine, this.GetFunction<Rf_lcons>()(handle, argument)))
+          // using (var call = new ProtectedPointer(Engine, this.GetFunction<Rf_lcons>()(handle, argument)))
+          var call = this.GetFunction<Rf_lcons>()(handle, argument);
+          using (var result = evaluateCall(call))
           {
-              using (var result = evaluateCall(call))
-              {
-                  return new SymbolicExpression(Engine, result);
-              }
+              return new SymbolicExpression(Engine, result);
           }
       }
 
@@ -135,20 +138,23 @@ namespace RDotNet
       public SymbolicExpression InvokeNamedFast(params Tuple<string, SymbolicExpression>[] args)
       {
           IntPtr argument = Engine.NilValue.DangerousGetHandle();
-          var rfInstall = GetFunction<Rf_install>();
-          var rSetTag = GetFunction<SET_TAG>();
-          var rfCons = GetFunction<Rf_cons>();
-          foreach (var arg in args.Reverse())
+          lock (Engine.syncLock)
           {
-              var sexp = arg.Item2;
-              argument = rfCons(sexp.DangerousGetHandle(), argument);
-              string name = arg.Item1;
-              if (!string.IsNullOrEmpty(name))
+              var rfInstall = GetFunction<Rf_install>();
+              var rSetTag = GetFunction<SET_TAG>();
+              var rfCons = GetFunction<Rf_cons>();
+              foreach (var arg in args.Reverse())
               {
-                  rSetTag(argument, rfInstall(name));
+                  var sexp = arg.Item2;
+                  argument = rfCons(sexp.DangerousGetHandle(), argument);
+                  string name = arg.Item1;
+                  if (!string.IsNullOrEmpty(name))
+                  {
+                      rSetTag(argument, rfInstall(name));
+                  }
               }
+              return createCallAndEvaluate(argument);
           }
-          return createCallAndEvaluate(argument);
       }
    }
 }

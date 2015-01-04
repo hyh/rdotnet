@@ -19,9 +19,9 @@ namespace RDotNet
          var r = new RuntimeDiagnostics(engine);
          int sizeEach = 20;
          int n = 100;
-         int nThreads = 10;
+         int nThreads = 50;
          // with concurrent:true, very likely to bomb.
-         doMultiThreadingOperation(r, sizeEach, n, nThreads, concurrent: false);
+         doMultiThreadingOperation(r, sizeEach, n, nThreads, concurrent: true);
       }
 
       private void doMultiThreadingOperation(RuntimeDiagnostics r, int sizeEach, int n, int numOps, bool concurrent = false)

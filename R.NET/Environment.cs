@@ -95,8 +95,11 @@ namespace RDotNet
          {
             throw new ArgumentException();
          }
-         IntPtr installedName = this.GetFunction<Rf_install>()(name);
-         this.GetFunction<Rf_defineVar>()(installedName, expression.DangerousGetHandle(), handle);
+         lock (Engine.syncLock)
+         {
+             IntPtr installedName = this.GetFunction<Rf_install>()(name);
+             this.GetFunction<Rf_defineVar>()(installedName, expression.DangerousGetHandle(), handle);
+         }
       }
 
       /// <summary>
@@ -106,7 +109,10 @@ namespace RDotNet
       /// <returns>Symbol names.</returns>
       public string[] GetSymbolNames(bool all = false)
       {
-         var symbolNames = new CharacterVector(Engine, this.GetFunction<R_lsInternal>()(handle, all));
+          IntPtr symbNamesCoerced;
+          lock (Engine.syncLock)
+              symbNamesCoerced = this.GetFunction<R_lsInternal>()(handle, all);
+         var symbolNames = new CharacterVector(Engine, symbNamesCoerced);
          int length = symbolNames.Length;
          var copy = new string[length];
          symbolNames.CopyTo(copy, length);

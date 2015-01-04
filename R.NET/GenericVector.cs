@@ -120,7 +120,10 @@ namespace RDotNet
       /// <returns>The pairlist.</returns>
       public Pairlist ToPairlist()
       {
-         return new Pairlist(Engine, this.GetFunction<Rf_VectorToPairList>()(handle));
+          IntPtr sexp;
+          lock (Engine.syncLock)
+              sexp = this.GetFunction<Rf_VectorToPairList>()(handle);
+          return new Pairlist(Engine, sexp);
       }
 
       /// <summary>

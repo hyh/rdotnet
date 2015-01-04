@@ -28,8 +28,14 @@ namespace RDotNet
       /// <param name="engine">The <see cref="REngine"/> handling this instance.</param>
       /// <param name="s">The string</param>
       public InternalString(REngine engine, string s)
-         : base(engine, engine.GetFunction<Rf_mkChar>()(s))
+         : base(engine, Safe_Rf_mkChar(engine, s))
       { }
+
+      private static IntPtr Safe_Rf_mkChar(REngine engine, string s)
+      {
+          lock (engine.syncLock)
+              return engine.GetFunction<Rf_mkChar>()(s);
+      }
 
       /// <summary>
       /// Converts to the string into .NET Framework string.

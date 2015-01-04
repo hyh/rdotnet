@@ -22,9 +22,10 @@ namespace RDotNet
             throw new ArgumentNullException();
          }
          // See issue 81. Rf_isList in the R API is NOT the correct thing to use (yes, hard to be more conter-intuitive)
-         return (expression.Type == SymbolicExpressionType.List ||
-            // ?is.list ==> "is.list returns TRUE if and only if its argument is a list or a pairlist of length > 0"
-            (expression.Type == SymbolicExpressionType.Pairlist && expression.GetFunction<Rf_length>()(expression.DangerousGetHandle()) > 0)); 
+         lock (expression.Engine.syncLock)
+             return (expression.Type == SymbolicExpressionType.List ||
+                // ?is.list ==> "is.list returns TRUE if and only if its argument is a list or a pairlist of length > 0"
+                (expression.Type == SymbolicExpressionType.Pairlist && expression.GetFunction<Rf_length>()(expression.DangerousGetHandle()) > 0)); 
       }
 
       /// <summary>
@@ -123,7 +124,9 @@ namespace RDotNet
          {
             throw new ArgumentNullException();
          }
-         return expression.GetFunction<Rf_isVector>()(expression.DangerousGetHandle());
+         
+         lock (expression.Engine.syncLock)
+             return expression.GetFunction<Rf_isVector>()(expression.DangerousGetHandle());
       }
 
       /// <summary>
@@ -137,8 +140,11 @@ namespace RDotNet
          {
             throw new ArgumentNullException();
          }
-         IntPtr coerced = expression.GetFunction<Rf_coerceVector>()(expression.DangerousGetHandle(), expression.Type);
+         IntPtr coerced;
+         lock (expression.Engine.syncLock)
+             coerced = expression.GetFunction<Rf_coerceVector>()(expression.DangerousGetHandle(), expression.Type);
          return new DynamicVector(expression.Engine, coerced);
+
       }
 
       /// <summary>
@@ -152,7 +158,9 @@ namespace RDotNet
          {
             return null;
          }
-         IntPtr coerced = expression.GetFunction<Rf_coerceVector>()(expression.DangerousGetHandle(), SymbolicExpressionType.LogicalVector);
+         IntPtr coerced;
+         lock (expression.Engine.syncLock)
+            coerced = expression.GetFunction<Rf_coerceVector>()(expression.DangerousGetHandle(), SymbolicExpressionType.LogicalVector);
          return new LogicalVector(expression.Engine, coerced);
       }
 
@@ -167,7 +175,9 @@ namespace RDotNet
          {
             return null;
          }
-         IntPtr coerced = expression.GetFunction<Rf_coerceVector>()(expression.DangerousGetHandle(), SymbolicExpressionType.IntegerVector);
+         IntPtr coerced;
+         lock (expression.Engine.syncLock)
+            coerced = expression.GetFunction<Rf_coerceVector>()(expression.DangerousGetHandle(), SymbolicExpressionType.IntegerVector);
          return new IntegerVector(expression.Engine, coerced);
       }
 
@@ -182,7 +192,9 @@ namespace RDotNet
          {
             return null;
          }
-         IntPtr coerced = expression.GetFunction<Rf_coerceVector>()(expression.DangerousGetHandle(), SymbolicExpressionType.NumericVector);
+         IntPtr coerced;
+         lock (expression.Engine.syncLock)
+            coerced = expression.GetFunction<Rf_coerceVector>()(expression.DangerousGetHandle(), SymbolicExpressionType.NumericVector);
          return new NumericVector(expression.Engine, coerced);
       }
 
@@ -198,10 +210,14 @@ namespace RDotNet
             return null;
          }
          IntPtr coerced = IntPtr.Zero;
-         if (expression.IsFactor())
-            coerced = expression.GetFunction<Rf_asCharacterFactor>()(expression.DangerousGetHandle());
-         else
-            coerced = expression.GetFunction<Rf_coerceVector>()(expression.DangerousGetHandle(), SymbolicExpressionType.CharacterVector);
+         IntPtr sexp = expression.DangerousGetHandle();
+         lock (expression.Engine.syncLock)
+         {
+             if (expression.IsFactor())
+                 coerced = expression.GetFunction<Rf_asCharacterFactor>()(sexp);
+             else
+                 coerced = expression.GetFunction<Rf_coerceVector>()(sexp, SymbolicExpressionType.CharacterVector);
+         }
          return new CharacterVector(expression.Engine, coerced);
       }
 

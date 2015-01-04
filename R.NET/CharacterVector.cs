@@ -54,7 +54,7 @@ namespace RDotNet
             {
                throw new ArgumentOutOfRangeException();
             }
-            using (new ProtectedPointer(this))
+            // using (new ProtectedPointer(this))
             {
                return GetValue(index);
             }
@@ -65,7 +65,7 @@ namespace RDotNet
             {
                throw new ArgumentOutOfRangeException();
             }
-            using (new ProtectedPointer(this))
+            // using (new ProtectedPointer(this))
             {
                SetValue(index, value);
             }
@@ -97,12 +97,11 @@ namespace RDotNet
          return Marshal.PtrToStringAnsi(pointer);
       }
 
-      private Rf_mkChar _mkChar = null;
+      // private Rf_mkChar _mkChar = null;
       private IntPtr mkChar(string value) 
       {
-         if (_mkChar == null)
-            _mkChar = this.GetFunction<Rf_mkChar>();
-         return _mkChar(value);
+          lock (Engine.syncLock)
+              return Engine.GetFunction<Rf_mkChar>()(value);
       }
 
       private void SetValue(int index, string value)

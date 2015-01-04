@@ -24,6 +24,8 @@ namespace StressTest
             NumericVector[] nVecs = r.CreateNumericVectors(n, sizeEach);
             nVecs = r.Lapply(nVecs, "function(x) {x * 2}");
 
+            // the massive objects creation may still cause StackOverflowException
+            // either make n smaller or change the build to x64
             doMultiThreadingOperation(r, sizeEach, n, 50, false);
             doTestObjectFinalization(r, sizeEach, n);
             doTestObjectFinalization(r, sizeEach, n, disposeSexp:true);

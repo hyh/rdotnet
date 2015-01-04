@@ -63,6 +63,8 @@ namespace RDotNet
       /// <remarks>Thanks to gchapman for proposing the fix. See https://rdotnet.codeplex.com/workitem/67 for details</remarks>
       public bool EnableLock { get; set; }
 
+      internal readonly Object syncLock = new Object();
+
       /// <summary>
       /// Gets whether this instance is running.
       /// </summary>
@@ -393,7 +395,8 @@ namespace RDotNet
          // Don't do any stack checking, see R Exts, '8.1.5 Threading issues', 
          // https://rdotnet.codeplex.com/discussions/462947
          // https://rdotnet.codeplex.com/workitem/115
-         SetDangerousInt32("R_CStackLimit", -1);
+         // comment it to see whether multithreading works
+         // SetDangerousInt32("R_CStackLimit", -1);
          switch (NativeUtility.GetPlatform())
          {
             case PlatformID.MacOSX:
@@ -665,48 +668,48 @@ namespace RDotNet
       private SymbolicExpression Parse(string statement, StringBuilder incompleteStatement)
       {
          incompleteStatement.Append(statement);
-         var s = GetFunction<Rf_mkString>()(incompleteStatement.ToString());
          string errorStatement;
-         using (new ProtectedPointer(this, s))
+         lock (syncLock)
          {
-            ParseStatus status;
-            var vector = new ExpressionVector(this, GetFunction<R_ParseVector>()(s, -1, out status, NilValue.DangerousGetHandle()));
+             var s = GetFunction<Rf_mkString>()(incompleteStatement.ToString());
+             ParseStatus status;
+             var vector = new ExpressionVector(this, GetFunction<R_ParseVector>()(s, -1, out status, NilValue.DangerousGetHandle()));
 
-            switch (status)
-            {
-               case ParseStatus.OK:
-                  incompleteStatement.Clear();
-                  if (vector.Length == 0)
-                  {
+             switch (status)
+             {
+                 case ParseStatus.OK:
+                     incompleteStatement.Clear();
+                     if (vector.Length == 0)
+                     {
+                         return null;
+                     }
+                     using (new ProtectedPointer(vector))
+                     {
+                         SymbolicExpression result;
+                         if (!vector.First().TryEvaluate(GlobalEnvironment, out result))
+                         {
+                             throw new EvaluationException(LastErrorMessage);
+                         }
+
+                         if (AutoPrint && !result.IsInvalid && GetVisible())
+                         {
+                             GetFunction<Rf_PrintValue>()(result.DangerousGetHandle());
+                         }
+                         return result;
+                     }
+                 case ParseStatus.Incomplete:
                      return null;
-                  }
-                  using (new ProtectedPointer(vector))
-                  {
-                     SymbolicExpression result;
-                     if (!vector.First().TryEvaluate(GlobalEnvironment, out result))
-                     {
-                        throw new EvaluationException(LastErrorMessage);
-                     }
-
-                     if (AutoPrint && !result.IsInvalid && GetVisible())
-                     {
-                        GetFunction<Rf_PrintValue>()(result.DangerousGetHandle());
-                     }
-                     return result;
-                  }
-               case ParseStatus.Incomplete:
-                  return null;
-               case ParseStatus.Error:
-                  // TODO: use LastErrorMessage if below is just a subset
-                  var parseErrorMsg = GetDangerousChar("R_ParseErrorMsg");
-                  errorStatement = incompleteStatement.ToString();
-                  incompleteStatement.Clear();
-                  throw new ParseException(status, errorStatement, parseErrorMsg);
-               default:
-                  errorStatement = incompleteStatement.ToString();
-                  incompleteStatement.Clear();
-                  throw new ParseException(status, errorStatement, "");
-            }
+                 case ParseStatus.Error:
+                     // TODO: use LastErrorMessage if below is just a subset
+                     var parseErrorMsg = GetDangerousChar("R_ParseErrorMsg");
+                     errorStatement = incompleteStatement.ToString();
+                     incompleteStatement.Clear();
+                     throw new ParseException(status, errorStatement, parseErrorMsg);
+                 default:
+                     errorStatement = incompleteStatement.ToString();
+                     incompleteStatement.Clear();
+                     throw new ParseException(status, errorStatement, "");
+             }
          }
       }
 
@@ -742,9 +745,14 @@ namespace RDotNet
             if (geterrmessage == null)
             {
                var statement = "geterrmessage()\n";
-               var s = GetFunction<Rf_mkString>()(statement);
+               IntPtr coerced;
                ParseStatus status;
-               var vector = new ExpressionVector(this, GetFunction<R_ParseVector>()(s, -1, out status, NilValue.DangerousGetHandle()));
+               lock (syncLock)
+               {
+                   var s = GetFunction<Rf_mkString>()(statement);
+                   coerced = GetFunction<R_ParseVector>()(s, -1, out status, NilValue.DangerousGetHandle());
+               }
+               var vector = new ExpressionVector(this, coerced);
                if (status != ParseStatus.OK)
                   throw new ParseException(status, statement, "");
                if (vector.Length == 0)
@@ -774,7 +782,8 @@ namespace RDotNet
       {
          CheckEngineIsRunning();
          var newArgs = ArrayConverter.Prepend(ID, args);
-         GetFunction<R_set_command_line_arguments>()(newArgs.Length, newArgs);
+         lock (syncLock)
+            GetFunction<R_set_command_line_arguments>()(newArgs.Length, newArgs);
       }
 
       /// <summary>
@@ -807,12 +816,15 @@ namespace RDotNet
       {
          this.isRunning = false;
          OnDisposing(EventArgs.Empty);
-         if (disposing && !Disposed)
+         lock (syncLock)
          {
-            GetFunction<R_RunExitFinalizers>()();
-            GetFunction<Rf_CleanEd>()();
-            GetFunction<R_CleanTempDir>()();
-            Disposed = true;
+             if (disposing && !Disposed)
+             {
+                 GetFunction<R_RunExitFinalizers>()();
+                 GetFunction<Rf_CleanEd>()();
+                 GetFunction<R_CleanTempDir>()();
+                 Disposed = true;
+             }
          }
 
          if (disposing && this.adapter != null)
